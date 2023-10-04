@@ -102,7 +102,7 @@ $app->put('/lottery/edit/{idx}',function(Request $request, Response $response,$a
     $quantity = $data['lottery_quantity'];
     
     $conn = $GLOBALS['connect'];
-    $sql = 'update lottery SET  lottery_number  = ?,draw_no = ?,  set_no  = ?, price  = ?, lottery_quantity = ? where idx = ?';
+    $sql = 'update lottery SET  lottery_number = ?,draw_no = ?,  set_no  = ?, price  = ?, lottery_quantity = ? where idx = ?';
     $stmt =$conn->prepare($sql);
     $stmt->bind_param('iiiiii',$lottery_number,$draw_no,$set_no,$price,$quantity,$idx);
     $stmt->execute();
@@ -190,3 +190,37 @@ $app->get('/lottery/orders',function(Request $request, Response $response,$args)
 
  
 
+$app->get('/lottery/{key}/{value}', function (Request $request, Response $response, $args) {
+    $conn = $GLOBALS['connect'];
+    $keyword = $args['key'];
+    $value = $args['value'];
+    // ตรวจสอบคีย์เวิร์ดและกำหนดคิวรี่ SQL ตามคีย์เวิร์ดที่ระบุ
+    $sql = 'select * from lottery where ';
+    $bindType = '';
+
+    if ($keyword === 'last3digit') {
+        $sql .= 'lottery_number LIKE ?';
+        $bindType = 's';
+        $value = '%' . $value;
+    } elseif ($keyword === 'draw_no') {
+        $sql .= 'draw_no = ?';
+        $bindType = 'i';
+    } elseif ($keyword === 'set_no') {
+        $sql .= 'set_no = ?';
+        $bindType = 'i';
+    } 
+    $stmt = $conn->prepare($sql);
+   
+    $stmt->bind_param($bindType, $value);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $data = array(); 
+    foreach ($result as $row) {
+        array_push($data, $row);
+    }
+     
+    $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK));
+    return $response
+        ->withHeader('Content-Type', 'application/json; charset=utf-8')
+        ->withStatus(200);
+});
