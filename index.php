@@ -5,6 +5,7 @@ use Slim\Factory\AppFactory;
 use Slim\Exception\HttpNotFoundException;
 
 require __DIR__ . '/vendor/autoload.php';
+date_default_timezone_set('Asia/Bangkok');
 
 $app = AppFactory::create();
 $app->setBasePath('/api_lottery');

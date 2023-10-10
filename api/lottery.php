@@ -357,15 +357,36 @@ $app->post('/lottery/order', function (Request $request, Response $response, $ar
 /// hstory
 
 
+
+//
+
 $app->get('/lotteries/admin/report_order', function (Request $request, Response $response) {
     // ค้นหาข้อมูลประวัติการสั่งซื้อทั้งหมดของผู้ใช้ทั้งหมด
+    $queryParams = $request->getQueryParams();
+    $dateFilter = '';
+
+    // ตรวจสอบว่ามีพารามิเตอร์ 'daily' หรือ 'monthly' ในคำขอ
+    if (isset($queryParams['daily'])) {
+        // ถ้ามีพารามิเตอร์ 'daily' ให้รับวันที่และแปลงให้อยู่ในรูปแบบของ MySQL DATE
+        $dailyDate = $queryParams['daily'];
+        $dailyDate = DateTime::createFromFormat('d/m/Y', $dailyDate)->format('Y-m-d');
+        $dateFilter = "WHERE DATE(o.purchase_date) = '$dailyDate'";
+    } elseif (isset($queryParams['monthly'])) {
+        // ถ้ามีพารามิเตอร์ 'monthly' ให้รับเดือนและปีและแปลงให้อยู่ในรูปแบบของ MySQL DATE
+        $monthlyDate = $queryParams['monthly'];
+        $monthlyDate = DateTime::createFromFormat('m/Y', $monthlyDate)->format('Y-m-d');
+        $dateFilter = "WHERE MONTH(o.purchase_date) = MONTH('$monthlyDate') AND YEAR(o.purchase_date) = YEAR('$monthlyDate')";
+    }// เรียกใช้งานค่า report_type จากคิวรีสตริง
+
+
     $getHistoryQuery = "SELECT o.order_id, o.purchase_date, m.fullname,m.user_id,
                                 l.lottery_number, d.quantity_order, l.price, (d.quantity_order * l.price) AS total_price
                         FROM lottery_order o
                         INNER JOIN member m ON o.user_id = m.user_id
                         INNER JOIN order_details d ON o.order_id = d.order_id
                         INNER JOIN lottery l ON d.lottery_idx = l.idx
-                        ORDER BY d.quantity_order DESC";
+                        $dateFilter
+                        ORDER BY o.order_id ASC";
     $conn = $GLOBALS['connect'];
     $result = $conn->query($getHistoryQuery);
 
@@ -415,27 +436,32 @@ $app->get('/lotteries/admin/report_order', function (Request $request, Response 
 });
 
 
+
 $app->get('/member/history_orders/{user_id}', function (Request $request, Response $response, $args) {
     // รับค่า user_id จาก URL
     $user_id = $args['user_id'];
-
-    // ค้นหาข้อมูลประวัติการสั่งซื้อของผู้ใช้เฉพาะ user_id ที่ระบุ
-    $getHistoryQuery = "SELECT o.order_id, o.purchase_date, m.fullname, m.user_id,
-                                l.lottery_number, d.quantity_order, l.price, (d.quantity_order * l.price) AS total_price
+    
+    // คำสั่ง SQL เพื่อค้นหาประวัติการสั่งซื้อของผู้ใช้ที่ระบุ
+    $getHistoryQuery = "SELECT o.order_id, o.purchase_date, m.fullname,m.user_id,
+                        l.lottery_number, d.quantity_order, l.price, (d.quantity_order * l.price) AS total_price
                         FROM lottery_order o
                         INNER JOIN member m ON o.user_id = m.user_id
                         INNER JOIN order_details d ON o.order_id = d.order_id
                         INNER JOIN lottery l ON d.lottery_idx = l.idx
                         WHERE o.user_id = ?
-                        ORDER BY o.order_id DESC"; // เรียงลำดับตาม order_id แบบมากไปน้อย
+                        ORDER BY o.order_id, l.lottery_number";
 
+    // เชื่อมต่อกับฐานข้อมูล
     $conn = $GLOBALS['connect'];
-    $stmt = $conn->prepare($getHistoryQuery);
 
-    // bind_param เพื่อรับค่า user_id และป้องกัน SQL Injection
-    $stmt->bind_param("i", $user_id);
+    // เตรียมคำสั่ง SQL และผูกพารามิเตอร์
+    $stmt = $conn->prepare($getHistoryQuery);
+    $stmt->bind_param("s", $user_id);
+
+    // รันคำสั่ง SQL
     $stmt->execute();
 
+    // รับผลลัพธ์
     $result = $stmt->get_result();
 
     if ($result->num_rows > 0) {
@@ -443,38 +469,98 @@ $app->get('/member/history_orders/{user_id}', function (Request $request, Respon
 
         while ($row = $result->fetch_assoc()) {
             $orderData = [
-                'lottery_number' => (int)$row['lottery_number'], // แปลงเป็น int(6)
+                'lottery_number' => (int)$row['lottery_number'],
                 'quantity_order' => $row['quantity_order'],
                 'price' => $row['price'],
                 'total_price' => $row['total_price'],
             ];
 
-            // เรียงข้อมูลใน $data ตาม order_id
-            $data[] = [
-                'purchase_date' => $row['purchase_date'],
-                'order_id' => $row['order_id'],
-                'user_id' => $row['user_id'],
-                'fullname' => $row['fullname'],
-                'orders' => [$orderData],
-            ];
-        }
-
-        // คำนวณราคารวมทั้งหมด
-        foreach ($data as &$order) {
-            $total_order_price = 0;
-            foreach ($order['orders'] as $orderItem) {
-                $total_order_price += $orderItem['total_price'];
+            // ตรวจสอบว่า order_id เปลี่ยนแปลงหรือไม่
+            if (!isset($data[$row['order_id']])) {
+                $data[$row['order_id']] = [
+                    'purchase_date' => $row['purchase_date'],
+                    'order_id' => $row['order_id'],
+                    'fullname' => $row['fullname'],
+                    'orders' => [],
+                ];
             }
-            $order['total_order_price'] = $total_order_price;
+
+            // เพิ่มข้อมูลการสั่งซื้อใน order นั้น
+            $data[$row['order_id']]['orders'][] = $orderData;
+            foreach ($data as &$order) {
+                $order['total_order_price'] = array_reduce($order['orders'], function ($carry, $item) {
+                    return $carry + $item['total_price'];
+                }, 0);
+            }
+         }
+
+        // แปลงผลลัพธ์เป็นอาร์เรย์และส่งให้กับ response
+        $response->getBody()->write(json_encode(array_values($data)));
+        return $response->withHeader('Content-Type', 'application/json');
+    } else {
+        // ไม่พบข้อมูล
+        $responseJson = [
+            'status' => 'error',
+            'message' => 'No orders found for the specified user.',
+        ];
+
+        $response->getBody()->write(json_encode($responseJson));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+    }
+
+    
+});
+
+$app->get('/history/{user_id}', function (Request $request, Response $response, $args) {
+    // รับค่า user_id จาก URL
+    $user_id = $args['user_id'];
+    
+    // คำสั่ง SQL เพื่อค้นหาประวัติการสั่งซื้อของผู้ใช้ที่ระบุ
+    $getHistoryQuery = "SELECT o.purchase_date, m.fullname, l.lottery_number, d.quantity_order, l.price, (d.quantity_order * l.price) AS total_price
+                        FROM lottery_order o
+                        INNER JOIN member m ON o.user_id = m.user_id
+                        INNER JOIN order_details d ON o.order_id = d.order_id
+                        INNER JOIN lottery l ON d.lottery_idx = l.idx
+                        WHERE o.user_id = ?
+                        ORDER BY o.purchase_date DESC";
+
+    // เชื่อมต่อกับฐานข้อมูล
+    $conn = $GLOBALS['connect'];
+
+    // เตรียมคำสั่ง SQL และผูกพารามิเตอร์
+    $stmt = $conn->prepare($getHistoryQuery);
+    $stmt->bind_param("s", $user_id);
+
+    // รันคำสั่ง SQL
+    $stmt->execute();
+
+    // รับผลลัพธ์
+    $result = $stmt->get_result();
+
+    if ($result->num_rows > 0) {
+        $data = [];
+
+        while ($row = $result->fetch_assoc()) {
+            $orderData = [
+                'purchase_date' => $row['purchase_date'],
+                'fullname' => $row['fullname'],
+                'lottery_number' => (int)$row['lottery_number'],
+                'quantity_order' => $row['quantity_order'],
+                'price' => $row['price'],
+                'total_price' => $row['total_price'],
+            ];
+
+            $data[] = $orderData;
         }
 
+        // แปลงผลลัพธ์เป็น JSON และส่งให้กับ response
         $response->getBody()->write(json_encode($data));
         return $response->withHeader('Content-Type', 'application/json');
     } else {
         // ไม่พบข้อมูล
         $responseJson = [
             'status' => 'error',
-            'message' => 'No orders found for user ' . $user_id,
+            'message' => 'No orders found for the specified user.',
         ];
 
         $response->getBody()->write(json_encode($responseJson));
