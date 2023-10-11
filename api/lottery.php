@@ -369,7 +369,7 @@ $app->get('/lotteries/admin/report_order', function (Request $request, Response 
     if (isset($queryParams['daily'])) {
         // ถ้ามีพารามิเตอร์ 'daily' ให้รับวันที่และแปลงให้อยู่ในรูปแบบของ MySQL DATE
         $dailyDate = $queryParams['daily'];
-        $dailyDate = DateTime::createFromFormat('d/m/Y', $dailyDate)->format('Y-m-d');
+        // $dailyDate = DateTime::createFromFormat('d/m/Y', $dailyDate)->format('Y-m-d');
         $dateFilter = "WHERE DATE(o.purchase_date) = '$dailyDate'";
     } elseif (isset($queryParams['monthly'])) {
         // ถ้ามีพารามิเตอร์ 'monthly' ให้รับเดือนและปีและแปลงให้อยู่ในรูปแบบของ MySQL DATE
@@ -386,7 +386,7 @@ $app->get('/lotteries/admin/report_order', function (Request $request, Response 
                         INNER JOIN order_details d ON o.order_id = d.order_id
                         INNER JOIN lottery l ON d.lottery_idx = l.idx
                         $dateFilter
-                        ORDER BY o.order_id ASC";
+                        ORDER BY o.purchase_date DESC";
     $conn = $GLOBALS['connect'];
     $result = $conn->query($getHistoryQuery);
 
