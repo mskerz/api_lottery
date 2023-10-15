@@ -360,6 +360,81 @@ $app->post('/lottery/order', function (Request $request, Response $response, $ar
 
 //
 
+// $app->get('/lotteries/admin/report_order', function (Request $request, Response $response) {
+//     // ค้นหาข้อมูลประวัติการสั่งซื้อทั้งหมดของผู้ใช้ทั้งหมด
+//     $queryParams = $request->getQueryParams();
+//     $dateFilter = '';
+
+//     // ตรวจสอบว่ามีพารามิเตอร์ 'daily' หรือ 'monthly' ในคำขอ
+//     if (isset($queryParams['daily'])) {
+//         // ถ้ามีพารามิเตอร์ 'daily' ให้รับวันที่และแปลงให้อยู่ในรูปแบบของ MySQL DATE
+//         $dailyDate = $queryParams['daily'];
+//         // $dailyDate = DateTime::createFromFormat('d/m/Y', $dailyDate)->format('Y-m-d');
+//         $dateFilter = "WHERE DATE(o.purchase_date) = '$dailyDate'";
+//     } elseif (isset($queryParams['monthly'])) {
+//         // ถ้ามีพารามิเตอร์ 'monthly' ให้รับเดือนและปีและแปลงให้อยู่ในรูปแบบของ MySQL DATE
+//         $monthlyDate = $queryParams['monthly'];
+//         $monthlyDate = DateTime::createFromFormat('m/Y', $monthlyDate)->format('Y-m-d');
+//         $dateFilter = "WHERE MONTH(o.purchase_date) = MONTH('$monthlyDate') AND YEAR(o.purchase_date) = YEAR('$monthlyDate')";
+//     }// เรียกใช้งานค่า report_type จากคิวรีสตริง
+
+
+//     $getHistoryQuery = "SELECT o.order_id, o.purchase_date, m.fullname,m.user_id,
+//                                 l.lottery_number, d.quantity_order, l.price, (d.quantity_order * l.price) AS total_price
+//                         FROM lottery_order o
+//                         INNER JOIN member m ON o.user_id = m.user_id
+//                         INNER JOIN order_details d ON o.order_id = d.order_id
+//                         INNER JOIN lottery l ON d.lottery_idx = l.idx
+//                         $dateFilter
+//                         ORDER BY o.purchase_date DESC";
+//     $conn = $GLOBALS['connect'];
+//     $result = $conn->query($getHistoryQuery);
+
+//     if ($result->num_rows > 0) {
+//         $data = [];
+
+//         while ($row = $result->fetch_assoc()) {
+
+//             $orderData = [
+
+//                 'lottery_number' => (int) $row['lottery_number'],
+//                 // แปลงเป็น int(6)
+//                 'quantity_order' => $row['quantity_order'],
+//                 'price' => $row['price'],
+//                 'total_price' => $row['total_price'],
+//             ];
+
+//             // เรียงข้อมูลใน $data ตาม order_id
+//             // ใช้ $row['order_id'] ในการสร้างดัชนีของอาร์เรย์ $data
+//             $data[$row['order_id']]['purchase_date'] = $row['purchase_date'];
+//             $data[$row['order_id']]['order_id'] = $row['order_id'];
+//             $data[$row['order_id']]['user_id'] = $row['user_id'];
+//             $data[$row['order_id']]['fullname'] = $row['fullname'];
+//             $data[$row['order_id']]['orders'][] = $orderData;
+
+//         }
+
+//         // คำนวณราคารวมทั้งหมด
+//         foreach ($data as &$order) {
+//             $order['total_order_price'] = array_reduce($order['orders'], function ($carry, $item) {
+//                 return $carry + $item['total_price'];
+//             }, 0);
+//         }
+
+//         $response->getBody()->write(json_encode(array_values($data)));
+//         return $response->withHeader('Content-Type', 'application/json');
+//     } else {
+//         // ไม่พบข้อมูล
+//         $responseJson = [
+//             'status' => 'error',
+//             'message' => 'No orders found.',
+//         ];
+
+//         $response->getBody()->write(json_encode($responseJson));
+//         return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+//     }
+// });
+
 $app->get('/lotteries/admin/report_order', function (Request $request, Response $response) {
     // ค้นหาข้อมูลประวัติการสั่งซื้อทั้งหมดของผู้ใช้ทั้งหมด
     $queryParams = $request->getQueryParams();
@@ -369,7 +444,6 @@ $app->get('/lotteries/admin/report_order', function (Request $request, Response 
     if (isset($queryParams['daily'])) {
         // ถ้ามีพารามิเตอร์ 'daily' ให้รับวันที่และแปลงให้อยู่ในรูปแบบของ MySQL DATE
         $dailyDate = $queryParams['daily'];
-        // $dailyDate = DateTime::createFromFormat('d/m/Y', $dailyDate)->format('Y-m-d');
         $dateFilter = "WHERE DATE(o.purchase_date) = '$dailyDate'";
     } elseif (isset($queryParams['monthly'])) {
         // ถ้ามีพารามิเตอร์ 'monthly' ให้รับเดือนและปีและแปลงให้อยู่ในรูปแบบของ MySQL DATE
@@ -378,8 +452,7 @@ $app->get('/lotteries/admin/report_order', function (Request $request, Response 
         $dateFilter = "WHERE MONTH(o.purchase_date) = MONTH('$monthlyDate') AND YEAR(o.purchase_date) = YEAR('$monthlyDate')";
     }// เรียกใช้งานค่า report_type จากคิวรีสตริง
 
-
-    $getHistoryQuery = "SELECT o.order_id, o.purchase_date, m.fullname,m.user_id,
+    $getHistoryQuery = "SELECT o.order_id, o.purchase_date, m.fullname, m.user_id,
                                 l.lottery_number, d.quantity_order, l.price, (d.quantity_order * l.price) AS total_price
                         FROM lottery_order o
                         INNER JOIN member m ON o.user_id = m.user_id
@@ -390,51 +463,40 @@ $app->get('/lotteries/admin/report_order', function (Request $request, Response 
     $conn = $GLOBALS['connect'];
     $result = $conn->query($getHistoryQuery);
 
-    if ($result->num_rows > 0) {
+    $data = [];
+
+    while ($row = $result->fetch_assoc()) {
+        $orderData = [
+            'lottery_number' => (int) $row['lottery_number'],
+            'quantity_order' => $row['quantity_order'],
+            'price' => $row['price'],
+            'total_price' => $row['total_price'],
+        ];
+
+        // เรียงข้อมูลใน $data ตาม order_id
+        // ใช้ $row['order_id'] ในการสร้างดัชนีของอาร์เรย์ $data
+        $data[$row['order_id']]['purchase_date'] = $row['purchase_date'];
+        $data[$row['order_id']]['order_id'] = $row['order_id'];
+        $data[$row['order_id']]['user_id'] = $row['user_id'];
+        $data[$row['order_id']]['fullname'] = $row['fullname'];
+        $data[$row['order_id']]['orders'][] = $orderData;
+    }
+
+    if (empty($data)) {
+        // ไม่พบข้อมูล
         $data = [];
-
-        while ($row = $result->fetch_assoc()) {
-
-            $orderData = [
-
-                'lottery_number' => (int) $row['lottery_number'],
-                // แปลงเป็น int(6)
-                'quantity_order' => $row['quantity_order'],
-                'price' => $row['price'],
-                'total_price' => $row['total_price'],
-            ];
-
-            // เรียงข้อมูลใน $data ตาม order_id
-            // ใช้ $row['order_id'] ในการสร้างดัชนีของอาร์เรย์ $data
-            $data[$row['order_id']]['purchase_date'] = $row['purchase_date'];
-            $data[$row['order_id']]['order_id'] = $row['order_id'];
-            $data[$row['order_id']]['user_id'] = $row['user_id'];
-            $data[$row['order_id']]['fullname'] = $row['fullname'];
-            $data[$row['order_id']]['orders'][] = $orderData;
-
-        }
-
+    } else {
         // คำนวณราคารวมทั้งหมด
         foreach ($data as &$order) {
             $order['total_order_price'] = array_reduce($order['orders'], function ($carry, $item) {
                 return $carry + $item['total_price'];
             }, 0);
         }
-
-        $response->getBody()->write(json_encode(array_values($data)));
-        return $response->withHeader('Content-Type', 'application/json');
-    } else {
-        // ไม่พบข้อมูล
-        $responseJson = [
-            'status' => 'error',
-            'message' => 'No orders found.',
-        ];
-
-        $response->getBody()->write(json_encode($responseJson));
-        return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
     }
-});
 
+    $response->getBody()->write(json_encode(array_values($data)));
+    return $response->withHeader('Content-Type', 'application/json');
+});
 
 
 $app->get('/member/history_orders/{user_id}', function (Request $request, Response $response, $args) {
